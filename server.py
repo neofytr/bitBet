@@ -13,14 +13,12 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 app = Flask(__name__)
 
-# Configure CORS with specific settings for ngrok
 CORS(app, 
      origins=["*"],
      methods=["GET", "POST", "OPTIONS"],
      allow_headers=["Content-Type", "ngrok-skip-browser-warning", "Authorization"],
      supports_credentials=True)
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -31,17 +29,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
 DATA_DIR = 'bitbets_data'
 USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 GUESSES_FILE = os.path.join(DATA_DIR, 'guesses.json')
 RESULTS_FILE = os.path.join(DATA_DIR, 'actual_results.json')
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
 
-# Request limits
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max request size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# In-memory cache to reduce file I/O
 data_cache = {
     'users': {},
     'guesses': {},
@@ -53,10 +48,8 @@ data_cache = {
     }
 }
 
-# Thread lock for data operations
 data_lock = threading.RLock()
 
-# Course names for CSV export
 COURSE_NAMES = {
     "bio-f111": "BIO F111 - General Biology",
     "chem-f111": "CHEM F111 - General Chemistry",
@@ -73,7 +66,6 @@ COURSE_NAMES = {
 }
 
 def rate_limit(max_requests=30, per_seconds=60):
-    """Simple rate limiting decorator"""
     requests = {}
     lock = threading.Lock()
     
@@ -84,14 +76,12 @@ def rate_limit(max_requests=30, per_seconds=60):
                 client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
                 now = time.time()
                 
-                # Clean old requests
                 if client_ip in requests:
                     requests[client_ip] = [req_time for req_time in requests[client_ip] 
                                          if now - req_time < per_seconds]
                 else:
                     requests[client_ip] = []
                 
-                # Check rate limit
                 if len(requests[client_ip]) >= max_requests:
                     logger.warning(f"Rate limit exceeded for {client_ip}")
                     return jsonify({
@@ -106,7 +96,6 @@ def rate_limit(max_requests=30, per_seconds=60):
     return decorator
 
 def handle_errors(f):
-    """Error handling decorator"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
@@ -132,7 +121,6 @@ def handle_errors(f):
     return decorated_function
 
 def ensure_directories():
-    """Create necessary directories if they don't exist"""
     try:
         os.makedirs(DATA_DIR, exist_ok=True)
         os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -142,7 +130,6 @@ def ensure_directories():
         raise
 
 def load_json_file(filepath, default=None):
-    """Load JSON file with caching, return default if file doesn't exist"""
     if default is None:
         default = {}
     
@@ -151,7 +138,6 @@ def load_json_file(filepath, default=None):
             logger.info(f"File {filepath} doesn't exist, returning default")
             return default
             
-        # Check if file has been modified since last load
         file_stat = os.path.getmtime(filepath)
         cache_key = os.path.basename(filepath).replace('.json', '')
         
@@ -162,11 +148,9 @@ def load_json_file(filepath, default=None):
                 logger.debug(f"Using cached data for {filepath}")
                 return data_cache[cache_key]
         
-        # Load from file
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # Update cache
         with data_lock:
             data_cache[cache_key] = data
             data_cache['last_modified'][cache_key] = file_stat
@@ -182,18 +166,14 @@ def load_json_file(filepath, default=None):
         return default
 
 def save_json_file(filepath, data):
-    """Save data to JSON file with atomic writes and caching"""
     try:
-        # Create temporary file first for atomic writes
         temp_filepath = filepath + '.tmp'
         
         with open(temp_filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         
-        # Atomic rename
         os.replace(temp_filepath, filepath)
         
-        # Update cache
         cache_key = os.path.basename(filepath).replace('.json', '')
         with data_lock:
             data_cache[cache_key] = data.copy() if isinstance(data, dict) else data
@@ -204,7 +184,6 @@ def save_json_file(filepath, data):
         
     except Exception as e:
         logger.error(f"Error saving {filepath}: {e}")
-        # Clean up temp file if it exists
         temp_filepath = filepath + '.tmp'
         if os.path.exists(temp_filepath):
             try:
@@ -214,7 +193,6 @@ def save_json_file(filepath, data):
         return False
 
 def create_backup():
-    """Create a backup of all data with compression"""
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = os.path.join(BACKUP_DIR, f'backup_{timestamp}.json')
@@ -227,23 +205,19 @@ def create_backup():
             'version': '2.0'
         }
         
-        # Save compressed backup
         with gzip.open(backup_file + '.gz', 'wt', encoding='utf-8') as f:
             json.dump(all_data, f, indent=2)
         
-        # Also save uncompressed for compatibility
         save_json_file(backup_file, all_data)
         
         logger.info(f"Backup created: {backup_file}")
         
-        # Clean old backups (keep last 10)
         cleanup_old_backups()
         
     except Exception as e:
         logger.error(f"Error creating backup: {e}")
 
 def cleanup_old_backups(keep_count=10):
-    """Remove old backup files, keeping only the most recent ones"""
     try:
         backup_files = []
         for filename in os.listdir(BACKUP_DIR):
@@ -251,14 +225,11 @@ def cleanup_old_backups(keep_count=10):
                 filepath = os.path.join(BACKUP_DIR, filename)
                 backup_files.append((filepath, os.path.getmtime(filepath)))
         
-        # Sort by modification time (newest first)
         backup_files.sort(key=lambda x: x[1], reverse=True)
         
-        # Remove old backups
         for filepath, _ in backup_files[keep_count:]:
             try:
                 os.remove(filepath)
-                # Also remove compressed version if it exists
                 gz_file = filepath + '.gz'
                 if os.path.exists(gz_file):
                     os.remove(gz_file)
@@ -270,7 +241,6 @@ def cleanup_old_backups(keep_count=10):
         logger.error(f"Error cleaning up backups: {e}")
 
 def export_to_csv():
-    """Export all data to CSV files using built-in csv module"""
     try:
         users = load_json_file(USERS_FILE)
         guesses = load_json_file(GUESSES_FILE)
@@ -278,7 +248,6 @@ def export_to_csv():
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Export guesses to CSV
         guesses_csv_file = os.path.join(DATA_DIR, f'guesses_export_{timestamp}.csv')
         with open(guesses_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = ['Username', 'Course', 'Course Name', 'Midsem Guess', 'Compre Guess', 'Timestamp']
@@ -298,7 +267,6 @@ def export_to_csv():
         
         logger.info(f"Guesses exported to: {guesses_csv_file}")
         
-        # Export results to CSV
         results_csv_file = os.path.join(DATA_DIR, f'results_export_{timestamp}.csv')
         with open(results_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = ['Course', 'Course Name', 'Exam Type', 'Average']
@@ -316,7 +284,6 @@ def export_to_csv():
         
         logger.info(f"Results exported to: {results_csv_file}")
         
-        # Export detailed analysis CSV
         analysis_csv_file = os.path.join(DATA_DIR, f'detailed_analysis_{timestamp}.csv')
         with open(analysis_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
             fieldnames = ['Course', 'Course Name', 'Exam Type', 'Username', 'User Guess', 'Actual Average', 'Difference', 'Is Winner']
@@ -351,7 +318,6 @@ def export_to_csv():
 
 @app.before_request
 def before_request():
-    """Handle preflight requests and add security headers"""
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
         response.headers.add('Access-Control-Allow-Origin', '*')
@@ -361,7 +327,6 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    """Add security and performance headers"""
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,ngrok-skip-browser-warning')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
@@ -394,16 +359,13 @@ def root():
 @app.route('/health', methods=['GET'])
 @handle_errors
 def health_check():
-    """Enhanced health check with more details"""
     try:
-        # Check file system
         files_exist = {
             'users': os.path.exists(USERS_FILE),
             'guesses': os.path.exists(GUESSES_FILE),
             'results': os.path.exists(RESULTS_FILE)
         }
         
-        # Check disk space
         disk_usage = {}
         try:
             stat = os.statvfs(DATA_DIR)
@@ -414,7 +376,6 @@ def health_check():
         except:
             disk_usage = {'error': 'Cannot check disk usage'}
         
-        # Get cache status
         with data_lock:
             cache_status = {
                 'users_cached': len(data_cache.get('users', {})),
@@ -456,11 +417,63 @@ def handle_users():
         if not isinstance(data, dict):
             return jsonify({'status': 'error', 'message': 'Data must be a JSON object'}), 400
             
+        users = load_json_file(USERS_FILE)
+        users.update(data)
+        
+        if save_json_file(USERS_FILE, users):
+            logger.info(f"POST /api/users - updated users successfully")
+            return jsonify({'status': 'success', 'message': 'Users updated'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save users'}), 500
+
+@app.route('/api/guesses', methods=['GET', 'POST'])
+@rate_limit(max_requests=100, per_seconds=60)
+@handle_errors
+def handle_guesses():
+    if request.method == 'GET':
+        guesses = load_json_file(GUESSES_FILE)
+        logger.info(f"GET /api/guesses - returning guesses for {len(guesses)} users")
+        return jsonify(guesses)
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+        
+        if not isinstance(data, dict):
+            return jsonify({'status': 'error', 'message': 'Data must be a JSON object'}), 400
+            
+        guesses = load_json_file(GUESSES_FILE)
+        guesses.update(data)
+        
+        if save_json_file(GUESSES_FILE, guesses):
+            threading.Thread(target=export_to_csv, daemon=True).start()
+            logger.info(f"POST /api/guesses - updated guesses successfully")
+            return jsonify({'status': 'success', 'message': 'Guesses updated'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Failed to save guesses'}), 500
+
+@app.route('/api/results', methods=['GET', 'POST'])
+@rate_limit(max_requests=50, per_seconds=60)
+@handle_errors
+def handle_results():
+    if request.method == 'GET':
+        results = load_json_file(RESULTS_FILE)
+        logger.info(f"GET /api/results - returning results for {len(results)} courses")
+        return jsonify(results)
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+        
+        if not isinstance(data, dict):
+            return jsonify({'status': 'error', 'message': 'Data must be a JSON object'}), 400
+            
         results = load_json_file(RESULTS_FILE)
         results.update(data)
         
         if save_json_file(RESULTS_FILE, results):
-            # Auto-export CSV in background thread to avoid blocking
             threading.Thread(target=export_to_csv, daemon=True).start()
             logger.info(f"POST /api/results - updated results successfully")
             return jsonify({'status': 'success', 'message': 'Results updated'})
@@ -468,11 +481,10 @@ def handle_users():
             return jsonify({'status': 'error', 'message': 'Failed to save results'}), 500
 
 @app.route('/api/backup', methods=['POST'])
-@rate_limit(max_requests=5, per_seconds=300)  # Very limited for backup operations
+@rate_limit(max_requests=5, per_seconds=300)
 @handle_errors
 def create_manual_backup():
     try:
-        # Run backup in background thread
         threading.Thread(target=create_backup, daemon=True).start()
         return jsonify({'status': 'success', 'message': 'Backup creation started'})
     except Exception as e:
@@ -480,11 +492,10 @@ def create_manual_backup():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/export-csv', methods=['POST'])
-@rate_limit(max_requests=5, per_seconds=300)  # Limited for export operations
+@rate_limit(max_requests=5, per_seconds=300)
 @handle_errors
 def manual_csv_export():
     try:
-        # Run export in background thread
         def export_with_response():
             success = export_to_csv()
             if success:
@@ -499,19 +510,16 @@ def manual_csv_export():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/clear-all', methods=['POST'])
-@rate_limit(max_requests=2, per_seconds=3600)  # Very restrictive for dangerous operations
+@rate_limit(max_requests=2, per_seconds=3600)
 @handle_errors
 def clear_all_data():
     try:
-        # Create backup before clearing
         create_backup()
         
-        # Clear all files
         save_json_file(USERS_FILE, {})
         save_json_file(GUESSES_FILE, {})
         save_json_file(RESULTS_FILE, {})
         
-        # Clear cache
         with data_lock:
             data_cache['users'] = {}
             data_cache['guesses'] = {}
@@ -524,18 +532,15 @@ def clear_all_data():
         return jsonify({'status': 'error', 'message': f'Failed to clear data: {str(e)}'}), 500
 
 @app.route('/api/restart-competition', methods=['POST'])
-@rate_limit(max_requests=5, per_seconds=3600)  # Limited for restart operations
+@rate_limit(max_requests=5, per_seconds=3600)
 @handle_errors
 def restart_competition():
     try:
-        # Create backup before restarting
         create_backup()
         
-        # Keep users but clear guesses and results
         save_json_file(GUESSES_FILE, {})
         save_json_file(RESULTS_FILE, {})
         
-        # Update cache
         with data_lock:
             data_cache['guesses'] = {}
             data_cache['actual_results'] = {}
@@ -568,7 +573,6 @@ def get_stats():
         
         results_set = sum(len(course_results) for course_results in results.values() if isinstance(course_results, dict))
         
-        # Additional statistics
         unique_courses_predicted = set()
         for user_guesses in guesses.values():
             unique_courses_predicted.update(user_guesses.keys())
@@ -590,17 +594,11 @@ def get_stats():
 @rate_limit(max_requests=10, per_seconds=60)
 @handle_errors
 def get_system_info():
-    """Get system information for monitoring"""
     try:
         import psutil
         
-        # Memory usage
         memory = psutil.virtual_memory()
-        
-        # Disk usage
         disk = psutil.disk_usage(DATA_DIR)
-        
-        # Process info
         process = psutil.Process()
         
         return jsonify({
@@ -660,17 +658,15 @@ def internal_error(error):
     return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 def periodic_backup():
-    """Create periodic backups every hour"""
     while True:
         try:
-            time.sleep(3600)  # Wait 1 hour
+            time.sleep(3600)
             create_backup()
             logger.info("Periodic backup completed")
         except Exception as e:
             logger.error(f"Periodic backup failed: {e}")
 
 def initialize_data_files():
-    """Initialize data files if they don't exist"""
     try:
         if not os.path.exists(USERS_FILE):
             save_json_file(USERS_FILE, {})
@@ -684,7 +680,6 @@ def initialize_data_files():
             save_json_file(RESULTS_FILE, {})
             logger.info("Initialized results.json")
             
-        # Load initial data into cache
         load_json_file(USERS_FILE)
         load_json_file(GUESSES_FILE)
         load_json_file(RESULTS_FILE)
@@ -697,10 +692,8 @@ def initialize_data_files():
 
 if __name__ == '__main__':
     try:
-        # Record server start time
         server_start_time = time.time()
         
-        # Initialize
         ensure_directories()
         initialize_data_files()
         
@@ -724,77 +717,20 @@ if __name__ == '__main__':
         logger.info("  GET /api/system-info")
         logger.info("  GET /health")
         
-        # Create initial backup on startup
         create_backup()
         
-        # Start periodic backup thread
         backup_thread = threading.Thread(target=periodic_backup, daemon=True)
         backup_thread.start()
         logger.info("Periodic backup thread started")
         
-        # Run the server with improved configuration
         app.run(
             host="0.0.0.0", 
             port=5000, 
             debug=False,
-            threaded=True,  # Enable threading for better concurrent request handling
-            use_reloader=False  # Disable reloader in production
+            threaded=True,
+            use_reloader=False
         )
         
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
-        raise 'Data must be a JSON object'}), 400
-            
-        users = load_json_file(USERS_FILE)
-        users.update(data)
-        
-        if save_json_file(USERS_FILE, users):
-            logger.info(f"POST /api/users - updated users successfully")
-            return jsonify({'status': 'success', 'message': 'Users updated'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to save users'}), 500
-
-@app.route('/api/guesses', methods=['GET', 'POST'])
-@rate_limit(max_requests=100, per_seconds=60)
-@handle_errors
-def handle_guesses():
-    if request.method == 'GET':
-        guesses = load_json_file(GUESSES_FILE)
-        logger.info(f"GET /api/guesses - returning guesses for {len(guesses)} users")
-        return jsonify(guesses)
-    
-    elif request.method == 'POST':
-        data = request.get_json()
-        if not data:
-            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
-        
-        if not isinstance(data, dict):
-            return jsonify({'status': 'error', 'message': 'Data must be a JSON object'}), 400
-            
-        guesses = load_json_file(GUESSES_FILE)
-        guesses.update(data)
-        
-        if save_json_file(GUESSES_FILE, guesses):
-            # Auto-export CSV in background thread to avoid blocking
-            threading.Thread(target=export_to_csv, daemon=True).start()
-            logger.info(f"POST /api/guesses - updated guesses successfully")
-            return jsonify({'status': 'success', 'message': 'Guesses updated'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to save guesses'}), 500
-
-@app.route('/api/results', methods=['GET', 'POST'])
-@rate_limit(max_requests=50, per_seconds=60)
-@handle_errors
-def handle_results():
-    if request.method == 'GET':
-        results = load_json_file(RESULTS_FILE)
-        logger.info(f"GET /api/results - returning results for {len(results)} courses")
-        return jsonify(results)
-    
-    elif request.method == 'POST':
-        data = request.get_json()
-        if not data:
-            return jsonify({'status': 'error', 'message': 'No data provided'}), 400
-        
-        if not isinstance(data, dict):
-            return jsonify({'status': 'error', 'message':
+        raise
