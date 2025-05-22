@@ -293,4 +293,4 @@ if __name__ == '__main__':
     # Create initial backup on startup
     create_backup()
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host="localhost", port=5000, debug=True)

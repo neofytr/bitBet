@@ -1,11 +1,10 @@
-// Configuration - Set your admin credentials here
 const ADMIN_CONFIG = {
   username: "admin",
   password: "admin123",
 };
 
 const SERVER_CONFIG = {
-  host: "51.21.195.200",
+  host: "192.168.122.1",
   port: "5000",
   get baseUrl() {
     return `http://${this.host}:${this.port}/api`;
