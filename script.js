@@ -6,7 +6,7 @@ const ADMIN_CONFIG = {
 // EC2 Server Configuration
 const SERVER_CONFIG = {
   host: "https://f740-13-48-194-145.ngrok-free.app", // Replace with your actual EC2 public IP
-  port: "5000",
+  port: "",
   protocol: "https",
   get baseUrl() {
     return `${this.protocol}://${this.host}:${this.port}/api`;
