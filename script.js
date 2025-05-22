@@ -12,7 +12,7 @@ function debugLog(message, data = null) {
 }
 
 const SERVER_CONFIG = {
-  host: "https://cb87-13-48-194-145.ngrok-free.app",
+  host: "cb87-13-48-194-145.ngrok-free.app",
   port: "",
   protocol: "https",
   get baseUrl() {
@@ -1471,5 +1471,4 @@ async function testDirectRequest() {
   }
 }
 
-// Add to window for console testing
 window.testDirectRequest = testDirectRequest;

@@ -17,7 +17,7 @@ CORS(app,
      origins=["*"],
      methods=["GET", "POST", "OPTIONS"],
      allow_headers=["Content-Type", "ngrok-skip-browser-warning", "Authorization"],
-     supports_credentials=True)
+     supports_credentials=False)
 
 logging.basicConfig(
     level=logging.INFO,
