@@ -3,7 +3,7 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
-const DEBUG = true;
+const DEBUG = false;
 
 function debugLog(message, data = null) {
   if (DEBUG) {
