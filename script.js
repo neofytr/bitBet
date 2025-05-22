@@ -4,10 +4,18 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
+const SERVER_CONFIG = {
+  host: "localhost",
+  port: "5000",
+  get baseUrl() {
+    return `http://${this.host}:${this.port}/api`;
+  },
+};
+
 // Data storage
-let users = JSON.parse(localStorage.getItem("users") || "{}");
-let guesses = JSON.parse(localStorage.getItem("guesses") || "{}");
-let actualResults = JSON.parse(localStorage.getItem("actualResults") || "{}");
+let users = {};
+let guesses = {};
+let actualResults = {};
 let currentUser = null;
 let isAdmin = false;
 
@@ -44,11 +52,112 @@ const courseCategories = {
 };
 
 // Initialize page
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
+  await loadDataFromServer();
   updateStats();
   calculateAndShowResults();
   setupEventListeners();
 });
+
+async function loadDataFromServer() {
+  try {
+    // Load users
+    const usersResponse = await fetch(`${SERVER_CONFIG.baseUrl}/users`);
+    if (usersResponse.ok) {
+      users = await usersResponse.json();
+    }
+
+    // Load guesses
+    const guessesResponse = await fetch(`${SERVER_CONFIG.baseUrl}/guesses`);
+    if (guessesResponse.ok) {
+      guesses = await guessesResponse.json();
+    }
+
+    // Load results
+    const resultsResponse = await fetch(`${SERVER_CONFIG.baseUrl}/results`);
+    if (resultsResponse.ok) {
+      actualResults = await resultsResponse.json();
+    }
+
+    console.log("Data loaded from server successfully");
+  } catch (error) {
+    console.error("Error loading data from server:", error);
+    showNotification("⚠️ Server connection failed. Using offline mode.");
+    // Fall back to localStorage if server is unavailable
+    users = JSON.parse(localStorage.getItem("users") || "{}");
+    guesses = JSON.parse(localStorage.getItem("guesses") || "{}");
+    actualResults = JSON.parse(localStorage.getItem("actualResults") || "{}");
+  }
+}
+
+async function saveUsersToServer() {
+  try {
+    const response = await fetch(`${SERVER_CONFIG.baseUrl}/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(users),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to save users to server");
+    }
+
+    // Also save to localStorage as backup
+    localStorage.setItem("users", JSON.stringify(users));
+  } catch (error) {
+    console.error("Error saving users to server:", error);
+    // Fall back to localStorage
+    localStorage.setItem("users", JSON.stringify(users));
+  }
+}
+
+async function saveGuessesToServer() {
+  try {
+    const response = await fetch(`${SERVER_CONFIG.baseUrl}/guesses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(guesses),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to save guesses to server");
+    }
+
+    // Also save to localStorage as backup
+    localStorage.setItem("guesses", JSON.stringify(guesses));
+  } catch (error) {
+    console.error("Error saving guesses to server:", error);
+    // Fall back to localStorage
+    localStorage.setItem("guesses", JSON.stringify(guesses));
+  }
+}
+
+async function saveResultsToServer() {
+  try {
+    const response = await fetch(`${SERVER_CONFIG.baseUrl}/results`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(actualResults),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to save results to server");
+    }
+
+    // Also save to localStorage as backup
+    localStorage.setItem("actualResults", JSON.stringify(actualResults));
+  } catch (error) {
+    console.error("Error saving results to server:", error);
+    // Fall back to localStorage
+    localStorage.setItem("actualResults", JSON.stringify(actualResults));
+  }
+}
 
 function setupEventListeners() {
   // Enter key handling
@@ -76,7 +185,7 @@ function setupEventListeners() {
   });
 }
 
-function login() {
+async function login() {
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("password").value.trim();
   const adminMode = document.getElementById("adminMode").checked;
@@ -113,7 +222,7 @@ function login() {
     // Regular user login
     if (!users[username]) {
       users[username] = password;
-      localStorage.setItem("users", JSON.stringify(users));
+      await saveUsersToServer(); // Use server save instead of localStorage
       showMessage(
         "loginMessage",
         "Account created successfully! Welcome to bitBETS! 🎉",
@@ -175,7 +284,7 @@ function logout() {
   showNotification("Logged out successfully! See you next time! 👋");
 }
 
-function saveGuess(course) {
+async function saveGuess(course) {
   if (!currentUser || isAdmin) return;
 
   const midsemValue = document.getElementById(`${course}-midsem`).value;
@@ -201,7 +310,7 @@ function saveGuess(course) {
     timestamp: new Date().toISOString(),
   };
 
-  localStorage.setItem("guesses", JSON.stringify(guesses));
+  await saveGuessesToServer(); // Use server save instead of localStorage
   saveToFile();
 
   updateCurrentGuessDisplay(course);
@@ -216,7 +325,7 @@ function saveGuess(course) {
   updateStats();
 }
 
-function autoSaveGuess(course) {
+async function autoSaveGuess(course) {
   if (!currentUser || isAdmin) return;
 
   const midsemValue = document.getElementById(`${course}-midsem`).value;
@@ -234,9 +343,45 @@ function autoSaveGuess(course) {
     timestamp: new Date().toISOString(),
   };
 
-  localStorage.setItem("guesses", JSON.stringify(guesses));
+  await saveGuessesToServer(); // Use server save instead of localStorage
   saveToFile();
   updateCurrentGuessDisplay(course);
+}
+
+// Modify the setActualResult function:
+async function setActualResult() {
+  if (!isAdmin) return;
+
+  const course = document.getElementById("admin-course").value;
+  const examType = document.getElementById("admin-exam").value;
+  const average = document.getElementById("admin-average").value;
+
+  if (!average || isNaN(average) || average < 0 || average > 100) {
+    showMessage(
+      "loginMessage",
+      "Please enter a valid average between 0 and 100",
+      "error"
+    );
+    setTimeout(() => hideMessage("loginMessage"), 3000);
+    return;
+  }
+
+  if (!actualResults[course]) {
+    actualResults[course] = {};
+  }
+
+  actualResults[course][examType] = parseFloat(average);
+  await saveResultsToServer(); // Use server save instead of localStorage
+  saveToFile();
+
+  document.getElementById("admin-average").value = "";
+  calculateAndShowResults();
+  updateAdminStats();
+
+  const message = `Result set for ${courseNames[course]} ${examType}: ${average}`;
+  showMessage("loginMessage", `✅ ${message}`, "success");
+  showNotification(message);
+  setTimeout(() => hideMessage("loginMessage"), 3000);
 }
 
 function loadUserGuesses() {
@@ -608,7 +753,7 @@ function exportResults() {
   showNotification("Results exported successfully! 📊");
 }
 
-function restartCompetition() {
+async function restartCompetition() {
   if (!isAdmin) return;
 
   const confirmed = confirm(
@@ -625,43 +770,65 @@ function restartCompetition() {
     );
 
     if (secondConfirm) {
-      // Keep users but clear everything else
-      guesses = {};
-      actualResults = {};
+      try {
+        const response = await fetch(
+          `${SERVER_CONFIG.baseUrl}/restart-competition`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
-      localStorage.setItem("guesses", JSON.stringify(guesses));
-      localStorage.setItem("actualResults", JSON.stringify(actualResults));
+        if (response.ok) {
+          // Update local data
+          guesses = {};
+          actualResults = {};
 
-      saveToFile();
+          // Also clear localStorage as backup
+          localStorage.setItem("guesses", JSON.stringify(guesses));
+          localStorage.setItem("actualResults", JSON.stringify(actualResults));
 
-      // Clear all input fields
-      const inputs = document.querySelectorAll('input[type="number"]');
-      inputs.forEach((input) => (input.value = ""));
+          saveToFile();
 
-      // Hide current guess displays
-      const currentGuesses = document.querySelectorAll(".current-guess");
-      currentGuesses.forEach((elem) => elem.classList.add("hidden"));
+          // Clear all input fields
+          const inputs = document.querySelectorAll('input[type="number"]');
+          inputs.forEach((input) => (input.value = ""));
 
-      // Clear admin displays
-      document.getElementById("allSubmissions").innerHTML = "";
-      document.getElementById("resultsContent").innerHTML = "";
-      document.getElementById("resultsSection").classList.add("hidden");
+          // Hide current guess displays
+          const currentGuesses = document.querySelectorAll(".current-guess");
+          currentGuesses.forEach((elem) => elem.classList.add("hidden"));
 
-      updateStats();
-      updateAdminStats();
+          // Clear admin displays
+          document.getElementById("allSubmissions").innerHTML = "";
+          document.getElementById("resultsContent").innerHTML = "";
+          document.getElementById("resultsSection").classList.add("hidden");
 
-      showMessage(
-        "loginMessage",
-        "Competition restarted successfully! All predictions and results cleared. 🔄",
-        "success"
-      );
-      showNotification("Competition restarted! Fresh start for everyone! 🚀");
-      setTimeout(() => hideMessage("loginMessage"), 4000);
+          updateStats();
+          updateAdminStats();
+
+          showMessage(
+            "loginMessage",
+            "Competition restarted successfully! All predictions and results cleared. 🔄",
+            "success"
+          );
+          showNotification(
+            "Competition restarted! Fresh start for everyone! 🚀"
+          );
+          setTimeout(() => hideMessage("loginMessage"), 4000);
+        } else {
+          throw new Error("Server request failed");
+        }
+      } catch (error) {
+        console.error("Error restarting competition:", error);
+        showNotification("⚠️ Server error. Please try again.");
+      }
     }
   }
 }
 
-function clearAllData() {
+async function clearAllData() {
   if (!isAdmin) return;
 
   const confirmed = confirm(
@@ -683,30 +850,63 @@ function clearAllData() {
       const userInput = prompt("Type 'DELETE' to confirm complete data wipe:");
 
       if (userInput === "DELETE") {
-        users = {};
-        guesses = {};
-        actualResults = {};
+        try {
+          const response = await fetch(`${SERVER_CONFIG.baseUrl}/clear-all`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
 
-        localStorage.clear();
+          if (response.ok) {
+            users = {};
+            guesses = {};
+            actualResults = {};
 
-        // Clear file storage
-        saveToFile();
+            localStorage.clear();
+            saveToFile();
 
-        showMessage(
-          "loginMessage",
-          "All data cleared successfully! Starting fresh. 🗑️",
-          "warning"
-        );
-        showNotification("All data wiped clean! Fresh start! 🔄");
+            showMessage(
+              "loginMessage",
+              "All data cleared successfully! Starting fresh. 🗑️",
+              "warning"
+            );
+            showNotification("All data wiped clean! Fresh start! 🔄");
 
-        setTimeout(() => {
-          logout();
-          location.reload();
-        }, 2000);
+            setTimeout(() => {
+              logout();
+              location.reload();
+            }, 2000);
+          } else {
+            throw new Error("Server request failed");
+          }
+        } catch (error) {
+          console.error("Error clearing data:", error);
+          showNotification("⚠️ Server error. Please try again.");
+        }
       } else {
         showNotification("Data wipe cancelled. Phew! 😅");
       }
     }
+  }
+}
+
+async function refreshData() {
+  try {
+    await loadDataFromServer();
+
+    if (isAdmin) {
+      updateAdminStats();
+      viewAllSubmissions();
+    } else {
+      loadUserGuesses();
+    }
+    calculateAndShowResults();
+    updateStats();
+    showNotification("Data refreshed from server! 🔄");
+  } catch (error) {
+    console.error("Error refreshing data:", error);
+    showNotification("⚠️ Could not refresh from server. Using local data.");
   }
 }
 
@@ -857,7 +1057,8 @@ function showNotification(message) {
 }
 
 // Load data on page load
-window.addEventListener("load", function () {
+window.addEventListener("load", async function () {
+  await loadDataFromServer();
   updateStats();
   calculateAndShowResults();
 });
