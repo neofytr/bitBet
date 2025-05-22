@@ -3,13 +3,81 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
+// Updated server configuration with environment detection
 const SERVER_CONFIG = {
-  host: "122.161.48.123",
+  // Try to detect if we're in development or production
+  get host() {
+    // Check if we're on localhost (development)
+    if (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    ) {
+      return "localhost";
+    }
+    // For production, you'll need to replace this with your actual server IP/domain
+    // Option 1: Use your public IP (get it from whatismyipaddress.com)
+    // Option 2: Use a cloud service (Railway, Heroku, etc.)
+    // Option 3: Use ngrok for tunneling
+    return "122.161.48.123"; // Replace this!
+  },
   port: "5000",
+  get protocol() {
+    // Use HTTPS in production if your server supports it
+    return window.location.protocol === "https:" ? "https" : "http";
+  },
   get baseUrl() {
-    return `http://${this.host}:${this.port}/api`;
+    return `${this.protocol}://${this.host}:${this.port}/api`;
   },
 };
+
+// Alternative configuration for different deployment scenarios
+const DEPLOYMENT_CONFIGS = {
+  // Local development
+  local: {
+    host: "localhost",
+    port: "5000",
+    protocol: "http",
+    get baseUrl() {
+      return `${this.protocol}://${this.host}:${this.port}/api`;
+    },
+  },
+
+  // Using ngrok (recommended for testing)
+  ngrok: {
+    host: "your-ngrok-url.ngrok.io", // Replace with your ngrok URL
+    port: "",
+    protocol: "https",
+    get baseUrl() {
+      return `${this.protocol}://${this.host}/api`;
+    },
+  },
+
+  // Cloud deployment (Railway, Heroku, etc.)
+  cloud: {
+    host: "your-app.railway.app", // Replace with your cloud service URL
+    port: "",
+    protocol: "https",
+    get baseUrl() {
+      return `${this.protocol}://${this.host}/api`;
+    },
+  },
+
+  // Public IP with port forwarding
+  publicIp: {
+    host: "122.161.48.123", // Replace with your public IP
+    port: "5000",
+    protocol: "http", // or "https" if you have SSL
+    get baseUrl() {
+      return `${this.protocol}://${this.host}:${this.port}/api`;
+    },
+  },
+};
+
+// Select which configuration to use
+const ACTIVE_CONFIG = DEPLOYMENT_CONFIGS.publicIp; // Change this based on your setup
+
+// Override SERVER_CONFIG with active configuration
+Object.assign(SERVER_CONFIG, ACTIVE_CONFIG);
 
 // Data storage
 let users = {};
