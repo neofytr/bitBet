@@ -12,7 +12,7 @@ function debugLog(message, data = null) {
 }
 
 const SERVER_CONFIG = {
-  host: "6928-13-48-194-145.ngrok-free.app",
+  host: "9f1e-13-48-194-145.ngrok-free.app",
   port: "",
   protocol: "https",
   get baseUrl() {
