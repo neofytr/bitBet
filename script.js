@@ -44,8 +44,8 @@ const DEPLOYMENT_CONFIGS = {
 
   // Using ngrok (recommended for testing)
   ngrok: {
-    host: "your-ngrok-url.ngrok.io", // Replace with your ngrok URL
-    port: "",
+    host: "https://9cd6-2401-4900-1c5b-1e93-aa29-c239-931e-f464.ngrok-free.app", // Replace with your ngrok URL
+    port: "5000",
     protocol: "https",
     get baseUrl() {
       return `${this.protocol}://${this.host}/api`;
@@ -74,7 +74,7 @@ const DEPLOYMENT_CONFIGS = {
 };
 
 // Select which configuration to use
-const ACTIVE_CONFIG = DEPLOYMENT_CONFIGS.publicIp; // Change this based on your setup
+const ACTIVE_CONFIG = DEPLOYMENT_CONFIGS.ngrok; // Change this based on your setup
 
 // Override SERVER_CONFIG with active configuration
 Object.assign(SERVER_CONFIG, ACTIVE_CONFIG);
