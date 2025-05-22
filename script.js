@@ -3,15 +3,26 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
+const DEBUG = true; // Set to false for production
+
+function debugLog(message, data = null) {
+  if (DEBUG) {
+    console.log(`[DEBUG] ${message}`, data || "");
+  }
+}
+
 const SERVER_CONFIG = {
   host: "https://cb87-13-48-194-145.ngrok-free.app",
-  port: "", // no port needed
+  port: "",
   protocol: "https",
   get baseUrl() {
     return `${this.protocol}://${this.host}/api`;
   },
-  timeout: 10000, // 10 second timeout
-  retries: 3, // number of retries for failed requests
+  get healthUrl() {
+    return `${this.protocol}://${this.host}/health`;
+  },
+  timeout: 15000, // Increased timeout
+  retries: 3,
 };
 
 // Global state
@@ -101,67 +112,97 @@ function setLoading(loading) {
   });
 }
 
-// Improved server request with retry logic and timeout
 async function makeServerRequest(url, options = {}) {
+  debugLog(`Attempting request to: ${url}`);
+  debugLog(`Request options:`, options);
+
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), SERVER_CONFIG.timeout);
+  const timeoutId = setTimeout(() => {
+    debugLog(`Request timeout after ${SERVER_CONFIG.timeout}ms`);
+    controller.abort();
+  }, SERVER_CONFIG.timeout);
 
   const requestOptions = {
     ...options,
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "true", // Skip ngrok browser warning
+      "ngrok-skip-browser-warning": "true",
+      Accept: "application/json",
+      // Add these headers to help with CORS and ngrok
+      "User-Agent": "Mozilla/5.0 (compatible; bitBETS/1.0)",
       ...options.headers,
     },
   };
+
+  debugLog(`Final request options:`, requestOptions);
 
   let lastError;
 
   for (let attempt = 1; attempt <= SERVER_CONFIG.retries; attempt++) {
     try {
-      console.log(`Making request to: ${url} (attempt ${attempt})`);
+      debugLog(`Making request attempt ${attempt}/${SERVER_CONFIG.retries}`);
 
       const response = await fetch(url, requestOptions);
       clearTimeout(timeoutId);
 
+      debugLog(`Response status: ${response.status} ${response.statusText}`);
+      debugLog(
+        `Response headers:`,
+        Object.fromEntries(response.headers.entries())
+      );
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response
+          .text()
+          .catch(() => "Unable to read error response");
+        debugLog(`Response error body:`, errorText);
+        throw new Error(
+          `HTTP ${response.status}: ${response.statusText} - ${errorText}`
+        );
       }
 
+      debugLog(`Request successful on attempt ${attempt}`);
       return response;
     } catch (error) {
       lastError = error;
-      console.error(
-        `Request failed (attempt ${attempt}/${SERVER_CONFIG.retries}):`,
-        error
-      );
+      debugLog(`Request failed on attempt ${attempt}:`, error.message);
+      debugLog(`Error type:`, error.name);
+      debugLog(`Full error:`, error);
 
-      // Don't retry on abort (timeout) or non-network errors
+      // Don't retry on abort (timeout) or if it's the last attempt
       if (error.name === "AbortError" || attempt === SERVER_CONFIG.retries) {
         break;
       }
 
       // Exponential backoff for retries
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.pow(2, attempt) * 1000)
-      );
+      const delay = Math.pow(2, attempt) * 1000;
+      debugLog(`Waiting ${delay}ms before retry...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 
   clearTimeout(timeoutId);
 
-  // Handle different types of errors
+  // Enhanced error handling with more specific messages
   if (lastError.name === "AbortError") {
-    throw new Error("Request timed out. Please check your connection.");
+    const timeoutError = `Request timed out after ${SERVER_CONFIG.timeout}ms. Server might be slow or unreachable.`;
+    debugLog(timeoutError);
+    throw new Error(timeoutError);
   } else if (
     lastError.message.includes("Failed to fetch") ||
-    lastError.message.includes("NetworkError")
+    lastError.message.includes("NetworkError") ||
+    lastError.message.includes("ERR_NETWORK")
   ) {
-    throw new Error(
-      `Cannot connect to server. Please check if server is running at ${SERVER_CONFIG.baseUrl}`
-    );
+    const networkError = `Network error: Cannot connect to server at ${url}. Check if server is running and accessible.`;
+    debugLog(networkError);
+    throw new Error(networkError);
+  } else if (lastError.message.includes("ERR_NAME_NOT_RESOLVED")) {
+    const dnsError = `DNS error: Cannot resolve hostname. Check if the ngrok URL is correct and active.`;
+    debugLog(dnsError);
+    throw new Error(dnsError);
   } else {
+    debugLog(`Generic server error:`, lastError.message);
     throw new Error(`Server error: ${lastError.message}`);
   }
 }
@@ -190,15 +231,32 @@ function debounce(func, wait) {
 }
 
 document.addEventListener("DOMContentLoaded", async function () {
+  console.log("🚀 Application starting...");
+
   try {
     setLoading(true);
+
+    // Add connectivity check
+    if (!navigator.onLine) {
+      throw new Error("No internet connection");
+    }
+
+    debugLog("Loading data from server...");
     await loadDataFromServer();
+
+    debugLog("Updating stats...");
     updateStats();
+
+    debugLog("Calculating results...");
     calculateAndShowResults();
+
+    debugLog("Setting up event listeners...");
     setupEventListeners();
+
+    console.log("✅ Application initialized successfully");
   } catch (error) {
-    console.error("Initialization error:", error);
-    showNotification("⚠️ Failed to initialize. Some features may not work.");
+    console.error("❌ Initialization error:", error);
+    showNotification(`⚠️ Initialization failed: ${error.message}`);
   } finally {
     setLoading(false);
   }
@@ -206,32 +264,76 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 async function loadDataFromServer() {
   try {
-    console.log(`Attempting to connect to server at: ${SERVER_CONFIG.baseUrl}`);
+    debugLog(`Starting server connection to: ${SERVER_CONFIG.baseUrl}`);
 
-    // Check server health first
-    await queueRequest(() =>
-      makeServerRequest(`${SERVER_CONFIG.baseUrl.replace("/api", "")}/health`)
+    // Test basic connectivity first
+    debugLog(`Testing connectivity to: ${window.location.origin}`);
+
+    // Check if we can reach the internet
+    try {
+      await fetch("https://www.google.com/favicon.ico", {
+        method: "HEAD",
+        mode: "no-cors",
+        cache: "no-cache",
+      });
+      debugLog("Internet connectivity: OK");
+    } catch (e) {
+      debugLog("Internet connectivity: FAILED", e);
+      throw new Error("No internet connection detected");
+    }
+
+    // Check server health with more detailed logging
+    debugLog(`Checking server health at: ${SERVER_CONFIG.healthUrl}`);
+
+    try {
+      const healthResponse = await queueRequest(() =>
+        makeServerRequest(SERVER_CONFIG.healthUrl)
+      );
+      const healthData = await healthResponse.text();
+      debugLog("Server health check response:", healthData);
+      console.log("✅ Server health check passed");
+    } catch (healthError) {
+      debugLog("Server health check failed:", healthError);
+      console.error("❌ Server health check failed:", healthError.message);
+
+      // Try alternative health check
+      try {
+        debugLog("Trying alternative health check...");
+        const altResponse = await queueRequest(() =>
+          makeServerRequest(`${SERVER_CONFIG.host}/`)
+        );
+        debugLog("Alternative health check passed");
+      } catch (altError) {
+        debugLog("Alternative health check also failed:", altError);
+        throw new Error(
+          `Server is not responding. Original error: ${healthError.message}`
+        );
+      }
+    }
+
+    // Load data with individual error handling
+    debugLog("Loading users data...");
+    const usersResponse = await queueRequest(() =>
+      makeServerRequest(`${SERVER_CONFIG.baseUrl}/users`)
     );
-    console.log("Server health check passed");
-
-    // Load all data concurrently with queue system
-    const [usersResponse, guessesResponse, resultsResponse] = await Promise.all(
-      [
-        queueRequest(() => makeServerRequest(`${SERVER_CONFIG.baseUrl}/users`)),
-        queueRequest(() =>
-          makeServerRequest(`${SERVER_CONFIG.baseUrl}/guesses`)
-        ),
-        queueRequest(() =>
-          makeServerRequest(`${SERVER_CONFIG.baseUrl}/results`)
-        ),
-      ]
-    );
-
     users = await usersResponse.json();
-    guesses = await guessesResponse.json();
-    actualResults = await resultsResponse.json();
+    debugLog("Users loaded:", Object.keys(users).length);
 
-    console.log("Data loaded from server successfully");
+    debugLog("Loading guesses data...");
+    const guessesResponse = await queueRequest(() =>
+      makeServerRequest(`${SERVER_CONFIG.baseUrl}/guesses`)
+    );
+    guesses = await guessesResponse.json();
+    debugLog("Guesses loaded:", Object.keys(guesses).length);
+
+    debugLog("Loading results data...");
+    const resultsResponse = await queueRequest(() =>
+      makeServerRequest(`${SERVER_CONFIG.baseUrl}/results`)
+    );
+    actualResults = await resultsResponse.json();
+    debugLog("Results loaded:", Object.keys(actualResults).length);
+
+    console.log("✅ All data loaded from server successfully");
     showNotification("✅ Connected to server successfully!");
 
     // Cache data locally as backup
@@ -239,10 +341,14 @@ async function loadDataFromServer() {
     localStorage.setItem("guesses_backup", JSON.stringify(guesses));
     localStorage.setItem("actualResults_backup", JSON.stringify(actualResults));
   } catch (error) {
-    console.error("Error loading data from server:", error);
-    showNotification("⚠️ Server connection failed. Using offline mode.");
+    console.error("❌ Error loading data from server:", error);
+    debugLog("Full error details:", error);
 
-    // Try to load from localStorage backup first, then fall back to empty objects
+    showNotification(
+      `⚠️ Server connection failed: ${error.message}. Using offline mode.`
+    );
+
+    // Load from backup
     users = JSON.parse(
       localStorage.getItem("users_backup") ||
         localStorage.getItem("users") ||
@@ -258,6 +364,64 @@ async function loadDataFromServer() {
         localStorage.getItem("actualResults") ||
         "{}"
     );
+
+    debugLog("Loaded from backup - Users:", Object.keys(users).length);
+    debugLog("Loaded from backup - Guesses:", Object.keys(guesses).length);
+    debugLog(
+      "Loaded from backup - Results:",
+      Object.keys(actualResults).length
+    );
+  }
+}
+
+async function testServerConnection() {
+  console.log("🔍 Starting manual server connection test...");
+
+  // Test 1: Basic fetch to server
+  try {
+    console.log("Test 1: Basic server connection...");
+    const response = await fetch(SERVER_CONFIG.host, {
+      method: "GET",
+      headers: {
+        "ngrok-skip-browser-warning": "true",
+      },
+    });
+    console.log("✅ Basic connection successful:", response.status);
+  } catch (error) {
+    console.log("❌ Basic connection failed:", error.message);
+  }
+
+  // Test 2: Health endpoint
+  try {
+    console.log("Test 2: Health endpoint...");
+    const response = await fetch(SERVER_CONFIG.healthUrl, {
+      method: "GET",
+      headers: {
+        "ngrok-skip-browser-warning": "true",
+      },
+    });
+    console.log("✅ Health endpoint successful:", response.status);
+    const text = await response.text();
+    console.log("Health response:", text);
+  } catch (error) {
+    console.log("❌ Health endpoint failed:", error.message);
+  }
+
+  // Test 3: API endpoint
+  try {
+    console.log("Test 3: API endpoint...");
+    const response = await fetch(`${SERVER_CONFIG.baseUrl}/users`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+      },
+    });
+    console.log("✅ API endpoint successful:", response.status);
+    const data = await response.json();
+    console.log("API response:", data);
+  } catch (error) {
+    console.log("❌ API endpoint failed:", error.message);
   }
 }
 
@@ -1264,3 +1428,48 @@ document.addEventListener("keydown", function (e) {
     e.target.blur(); // Trigger blur event to save
   }
 });
+
+console.log(`
+  🔧 TROUBLESHOOTING STEPS:
+  
+  1. Run this in console to test connection:
+     testServerConnection()
+  
+  2. Check if ngrok is running:
+     - Open ${SERVER_CONFIG.host} in new tab
+     - Should see your server response
+  
+  3. Check browser console for CORS errors
+  
+  4. Verify server is actually running on correct port
+  
+  5. Test with curl in terminal:
+     curl -H "ngrok-skip-browser-warning: true" ${SERVER_CONFIG.host}/health
+  
+  6. If ngrok tunnel expired, update SERVER_CONFIG.host with new URL
+  
+  7. Enable debug mode by setting DEBUG = true at top of file
+  `);
+
+window.testServerConnection = testServerConnection;
+window.debugServerConfig = () => {
+  console.log("Current SERVER_CONFIG:", SERVER_CONFIG);
+  console.log("Base URL:", SERVER_CONFIG.baseUrl);
+  console.log("Health URL:", SERVER_CONFIG.healthUrl);
+};
+
+async function testDirectRequest() {
+  try {
+    console.log("Testing direct request without queue...");
+    const response = await makeServerRequest(`${SERVER_CONFIG.baseUrl}/users`);
+    const data = await response.json();
+    console.log("✅ Direct request successful:", data);
+    return data;
+  } catch (error) {
+    console.error("❌ Direct request failed:", error);
+    throw error;
+  }
+}
+
+// Add to window for console testing
+window.testDirectRequest = testDirectRequest;
