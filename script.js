@@ -3,9 +3,8 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
-// EC2 Server Configuration
 const SERVER_CONFIG = {
-  host: "https://f740-13-48-194-145.ngrok-free.app", // Replace with your actual EC2 public IP
+  host: "https://f740-13-48-194-145.ngrok-free.app",
   port: "",
   protocol: "https",
   get baseUrl() {
@@ -13,14 +12,12 @@ const SERVER_CONFIG = {
   },
 };
 
-// Data storage
 let users = {};
 let guesses = {};
 let actualResults = {};
 let currentUser = null;
 let isAdmin = false;
 
-// Course mapping for display names
 const courseNames = {
   "bio-f111": "BIO F111 - General Biology",
   "chem-f111": "CHEM F111 - General Chemistry",
@@ -36,7 +33,6 @@ const courseNames = {
   "bits-f111": "BITS F111 - Thermodynamics",
 };
 
-// Course categories for filtering
 const courseCategories = {
   "bio-f111": "science",
   "chem-f111": "science",
@@ -52,7 +48,6 @@ const courseCategories = {
   "bits-f112": "engineering",
 };
 
-// Initialize page
 document.addEventListener("DOMContentLoaded", async function () {
   await loadDataFromServer();
   updateStats();
@@ -79,7 +74,6 @@ async function makeServerRequest(url, options = {}) {
   } catch (error) {
     console.error(`Server request failed for ${url}:`, error);
 
-    // Show user-friendly error message
     if (
       error.message.includes("Failed to fetch") ||
       error.message.includes("NetworkError")
@@ -99,25 +93,21 @@ async function loadDataFromServer() {
   try {
     console.log(`Attempting to connect to server at: ${SERVER_CONFIG.baseUrl}`);
 
-    // Test server connectivity first
     await makeServerRequest(
       `${SERVER_CONFIG.baseUrl.replace("/api", "")}/health`
     );
     console.log("Server health check passed");
 
-    // Load users
     const usersResponse = await makeServerRequest(
       `${SERVER_CONFIG.baseUrl}/users`
     );
     users = await usersResponse.json();
 
-    // Load guesses
     const guessesResponse = await makeServerRequest(
       `${SERVER_CONFIG.baseUrl}/guesses`
     );
     guesses = await guessesResponse.json();
 
-    // Load results
     const resultsResponse = await makeServerRequest(
       `${SERVER_CONFIG.baseUrl}/results`
     );
@@ -129,7 +119,6 @@ async function loadDataFromServer() {
     console.error("Error loading data from server:", error);
     showNotification("⚠️ Server connection failed. Using offline mode.");
 
-    // Fall back to localStorage if server is unavailable
     users = JSON.parse(localStorage.getItem("users") || "{}");
     guesses = JSON.parse(localStorage.getItem("guesses") || "{}");
     actualResults = JSON.parse(localStorage.getItem("actualResults") || "{}");
@@ -150,11 +139,9 @@ async function saveUsersToServer() {
       throw new Error("Failed to save users to server");
     }
 
-    // Also save to localStorage as backup
     localStorage.setItem("users", JSON.stringify(users));
   } catch (error) {
     console.error("Error saving users to server:", error);
-    // Fall back to localStorage
     localStorage.setItem("users", JSON.stringify(users));
   }
 }
@@ -173,11 +160,9 @@ async function saveGuessesToServer() {
       throw new Error("Failed to save guesses to server");
     }
 
-    // Also save to localStorage as backup
     localStorage.setItem("guesses", JSON.stringify(guesses));
   } catch (error) {
     console.error("Error saving guesses to server:", error);
-    // Fall back to localStorage
     localStorage.setItem("guesses", JSON.stringify(guesses));
   }
 }
@@ -196,17 +181,14 @@ async function saveResultsToServer() {
       throw new Error("Failed to save results to server");
     }
 
-    // Also save to localStorage as backup
     localStorage.setItem("actualResults", JSON.stringify(actualResults));
   } catch (error) {
     console.error("Error saving results to server:", error);
-    // Fall back to localStorage
     localStorage.setItem("actualResults", JSON.stringify(actualResults));
   }
 }
 
 function setupEventListeners() {
-  // Enter key handling
   document
     .getElementById("username")
     .addEventListener("keypress", function (e) {
@@ -219,7 +201,6 @@ function setupEventListeners() {
       if (e.key === "Enter") login();
     });
 
-  // Auto-save functionality for predictions
   const inputs = document.querySelectorAll('input[type="number"]');
   inputs.forEach((input) => {
     input.addEventListener("blur", function () {
@@ -245,7 +226,6 @@ async function login() {
     return;
   }
 
-  // Check admin login
   if (adminMode) {
     if (
       username === ADMIN_CONFIG.username &&
@@ -265,10 +245,9 @@ async function login() {
       return;
     }
   } else {
-    // Regular user login
     if (!users[username]) {
       users[username] = password;
-      await saveUsersToServer(); // Use server save instead of localStorage
+      await saveUsersToServer();
       showMessage(
         "loginMessage",
         "Account created successfully! Welcome to bitBETS! 🎉",
@@ -356,7 +335,7 @@ async function saveGuess(course) {
     timestamp: new Date().toISOString(),
   };
 
-  await saveGuessesToServer(); // Use server save instead of localStorage
+  await saveGuessesToServer();
   saveToFile();
 
   updateCurrentGuessDisplay(course);
@@ -389,12 +368,11 @@ async function autoSaveGuess(course) {
     timestamp: new Date().toISOString(),
   };
 
-  await saveGuessesToServer(); // Use server save instead of localStorage
+  await saveGuessesToServer();
   saveToFile();
   updateCurrentGuessDisplay(course);
 }
 
-// Modify the setActualResult function:
 async function setActualResult() {
   if (!isAdmin) return;
 
@@ -417,7 +395,7 @@ async function setActualResult() {
   }
 
   actualResults[course][examType] = parseFloat(average);
-  await saveResultsToServer(); // Use server save instead of localStorage
+  await saveResultsToServer();
   saveToFile();
 
   document.getElementById("admin-average").value = "";
@@ -526,7 +504,7 @@ function calculateAndShowResults() {
             username: username,
             guess: userGuess,
             difference: difference,
-            isWinner: difference <= 1, // Winner criteria: within ±1 mark
+            isWinner: difference <= 1, // winner criteria: within ±1 mark
           });
         }
       }
@@ -748,7 +726,6 @@ function exportResults() {
     },
   };
 
-  // Generate detailed results
   for (const course in actualResults) {
     for (const examType in actualResults[course]) {
       const key = `${course}-${examType}`;
@@ -828,25 +805,20 @@ async function restartCompetition() {
         );
 
         if (response.ok) {
-          // Update local data
           guesses = {};
           actualResults = {};
 
-          // Also clear localStorage as backup
           localStorage.setItem("guesses", JSON.stringify(guesses));
           localStorage.setItem("actualResults", JSON.stringify(actualResults));
 
           saveToFile();
 
-          // Clear all input fields
           const inputs = document.querySelectorAll('input[type="number"]');
           inputs.forEach((input) => (input.value = ""));
 
-          // Hide current guess displays
           const currentGuesses = document.querySelectorAll(".current-guess");
           currentGuesses.forEach((elem) => elem.classList.add("hidden"));
 
-          // Clear admin displays
           document.getElementById("allSubmissions").innerHTML = "";
           document.getElementById("resultsContent").innerHTML = "";
           document.getElementById("resultsSection").classList.add("hidden");
@@ -1019,11 +991,9 @@ function filterCourses(category) {
   const cards = document.querySelectorAll(".course-card");
   const buttons = document.querySelectorAll(".filter-btn");
 
-  // Update button states
   buttons.forEach((btn) => btn.classList.remove("active"));
   event.target.classList.add("active");
 
-  // Filter cards
   cards.forEach((card) => {
     if (category === "all" || card.dataset.category === category) {
       card.style.display = "block";
@@ -1035,21 +1005,17 @@ function filterCourses(category) {
 }
 
 function switchTab(tabName) {
-  // Hide all tab contents
   document.querySelectorAll(".admin-tab-content").forEach((tab) => {
     tab.classList.add("hidden");
   });
 
-  // Remove active class from all buttons
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.classList.remove("active");
   });
 
-  // Show selected tab and activate button
   document.getElementById(`${tabName}Tab`).classList.remove("hidden");
   event.target.classList.add("active");
 
-  // Load data for specific tabs
   if (tabName === "submissions") {
     viewAllSubmissions();
   } else if (tabName === "management") {
@@ -1058,8 +1024,6 @@ function switchTab(tabName) {
 }
 
 function saveToFile() {
-  // In a real implementation, this would save to a server
-  // For now, we'll use localStorage as the persistent storage
   try {
     const data = {
       users: users,
@@ -1068,7 +1032,6 @@ function saveToFile() {
       lastUpdated: new Date().toISOString(),
     };
 
-    // Simulate file saving by storing in a special localStorage key
     localStorage.setItem("bitbets_file_backup", JSON.stringify(data));
   } catch (error) {
     console.error("Error saving to file:", error);
@@ -1102,7 +1065,6 @@ function showNotification(message) {
   }, 3000);
 }
 
-// Load data on page load
 window.addEventListener("load", async function () {
   await loadDataFromServer();
   updateStats();
