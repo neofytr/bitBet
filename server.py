@@ -4,17 +4,18 @@ import json
 import csv
 import os
 from datetime import datetime
-import pandas as pd
 
 app = Flask(__name__)
-CORS(app)  
+CORS(app)  # Enable CORS for all routes
 
+# Configuration
 DATA_DIR = 'bitbets_data'
 USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 GUESSES_FILE = os.path.join(DATA_DIR, 'guesses.json')
 RESULTS_FILE = os.path.join(DATA_DIR, 'actual_results.json')
 BACKUP_DIR = os.path.join(DATA_DIR, 'backups')
 
+# Course names for CSV export
 COURSE_NAMES = {
     "bio-f111": "BIO F111 - General Biology",
     "chem-f111": "CHEM F111 - General Chemistry",
@@ -77,45 +78,78 @@ def create_backup():
         print(f"Error creating backup: {e}")
 
 def export_to_csv():
-    """Export all data to CSV files"""
+    """Export all data to CSV files using built-in csv module"""
     try:
         users = load_json_file(USERS_FILE)
         guesses = load_json_file(GUESSES_FILE)
         results = load_json_file(RESULTS_FILE)
         
-        guesses_data = []
-        for username, user_guesses in guesses.items():
-            for course, guess_data in user_guesses.items():
-                guesses_data.append({
-                    'Username': username,
-                    'Course': course,
-                    'Course Name': COURSE_NAMES.get(course, course),
-                    'Midsem Guess': guess_data.get('midsem', ''),
-                    'Compre Guess': guess_data.get('compre', ''),
-                    'Timestamp': guess_data.get('timestamp', '')
-                })
+        # Export guesses to CSV
+        guesses_csv_file = os.path.join(DATA_DIR, 'guesses_export.csv')
+        with open(guesses_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['Username', 'Course', 'Course Name', 'Midsem Guess', 'Compre Guess', 'Timestamp']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for username, user_guesses in guesses.items():
+                for course, guess_data in user_guesses.items():
+                    writer.writerow({
+                        'Username': username,
+                        'Course': course,
+                        'Course Name': COURSE_NAMES.get(course, course),
+                        'Midsem Guess': guess_data.get('midsem', ''),
+                        'Compre Guess': guess_data.get('compre', ''),
+                        'Timestamp': guess_data.get('timestamp', '')
+                    })
         
-        if guesses_data:
-            df_guesses = pd.DataFrame(guesses_data)
-            csv_file = os.path.join(DATA_DIR, 'guesses_export.csv')
-            df_guesses.to_csv(csv_file, index=False)
-            print(f"Guesses exported to: {csv_file}")
+        print(f"Guesses exported to: {guesses_csv_file}")
         
-        results_data = []
-        for course, course_results in results.items():
-            for exam_type, average in course_results.items():
-                results_data.append({
-                    'Course': course,
-                    'Course Name': COURSE_NAMES.get(course, course),
-                    'Exam Type': exam_type,
-                    'Average': average
-                })
+        # Export results to CSV
+        results_csv_file = os.path.join(DATA_DIR, 'results_export.csv')
+        with open(results_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['Course', 'Course Name', 'Exam Type', 'Average']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for course, course_results in results.items():
+                for exam_type, average in course_results.items():
+                    writer.writerow({
+                        'Course': course,
+                        'Course Name': COURSE_NAMES.get(course, course),
+                        'Exam Type': exam_type,
+                        'Average': average
+                    })
         
-        if results_data:
-            df_results = pd.DataFrame(results_data)
-            csv_file = os.path.join(DATA_DIR, 'results_export.csv')
-            df_results.to_csv(csv_file, index=False)
-            print(f"Results exported to: {csv_file}")
+        print(f"Results exported to: {results_csv_file}")
+        
+        # Export detailed analysis CSV
+        analysis_csv_file = os.path.join(DATA_DIR, 'detailed_analysis.csv')
+        with open(analysis_csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['Course', 'Course Name', 'Exam Type', 'Username', 'User Guess', 'Actual Average', 'Difference', 'Is Winner']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for course, course_results in results.items():
+                for exam_type, actual_avg in course_results.items():
+                    # Find all users who made guesses for this course/exam
+                    for username, user_guesses in guesses.items():
+                        if course in user_guesses and user_guesses[course].get(exam_type) is not None:
+                            user_guess = user_guesses[course][exam_type]
+                            difference = abs(actual_avg - user_guess)
+                            is_winner = difference <= 1
+                            
+                            writer.writerow({
+                                'Course': course,
+                                'Course Name': COURSE_NAMES.get(course, course),
+                                'Exam Type': exam_type,
+                                'Username': username,
+                                'User Guess': user_guess,
+                                'Actual Average': actual_avg,
+                                'Difference': round(difference, 2),
+                                'Is Winner': 'Yes' if is_winner else 'No'
+                            })
+        
+        print(f"Detailed analysis exported to: {analysis_csv_file}")
             
     except Exception as e:
         print(f"Error exporting to CSV: {e}")
@@ -148,6 +182,7 @@ def handle_guesses():
         guesses.update(data)
         
         if save_json_file(GUESSES_FILE, guesses):
+            # Auto-export CSV when guesses are updated
             export_to_csv()
             return jsonify({'status': 'success', 'message': 'Guesses updated'})
         else:
@@ -165,6 +200,7 @@ def handle_results():
         results.update(data)
         
         if save_json_file(RESULTS_FILE, results):
+            # Auto-export CSV when results are updated
             export_to_csv()
             return jsonify({'status': 'success', 'message': 'Results updated'})
         else:
@@ -183,8 +219,10 @@ def manual_csv_export():
 @app.route('/api/clear-all', methods=['POST'])
 def clear_all_data():
     try:
+        # Create backup before clearing
         create_backup()
         
+        # Clear all files
         save_json_file(USERS_FILE, {})
         save_json_file(GUESSES_FILE, {})
         save_json_file(RESULTS_FILE, {})
@@ -196,8 +234,10 @@ def clear_all_data():
 @app.route('/api/restart-competition', methods=['POST'])
 def restart_competition():
     try:
+        # Create backup before restarting
         create_backup()
         
+        # Keep users but clear guesses and results
         save_json_file(GUESSES_FILE, {})
         save_json_file(RESULTS_FILE, {})
         
@@ -250,6 +290,7 @@ if __name__ == '__main__':
     print("  GET /api/stats")
     print("  GET /health")
     
+    # Create initial backup on startup
     create_backup()
     
     app.run(host='0.0.0.0', port=5000, debug=True)
