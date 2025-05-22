@@ -4,7 +4,7 @@ const ADMIN_CONFIG = {
 };
 
 const SERVER_CONFIG = {
-  host: "https://bit-bet-1mcw.vercel.app/",
+  host: "https://dca6-13-48-194-145.ngrok-free.app",
   port: "", // no port needed
   protocol: "https",
   get baseUrl() {
