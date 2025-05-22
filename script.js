@@ -419,7 +419,7 @@ async function saveUsersToServer() {
   } catch (error) {
     console.error("Error saving users to server:", error);
     localStorage.setItem("users", JSON.stringify(users));
-    throw error; 
+    throw error;
   }
 }
 
@@ -1398,50 +1398,6 @@ window.addEventListener("load", async function () {
 document.addEventListener("keydown", function (e) {
   if (e.key === "Enter" && e.target.type === "number") {
     e.preventDefault();
-    e.target.blur(); 
+    e.target.blur();
   }
 });
-
-console.log(`
-  🔧 TROUBLESHOOTING STEPS:
-  
-  1. Run this in console to test connection:
-     testServerConnection()
-  
-  2. Check if ngrok is running:
-     - Open ${SERVER_CONFIG.host} in new tab
-     - Should see your server response
-  
-  3. Check browser console for CORS errors
-  
-  4. Verify server is actually running on correct port
-  
-  5. Test with curl in terminal:
-     curl -H "ngrok-skip-browser-warning: true" ${SERVER_CONFIG.host}/health
-  
-  6. If ngrok tunnel expired, update SERVER_CONFIG.host with new URL
-  
-  7. Enable debug mode by setting DEBUG = true at top of file
-  `);
-
-window.testServerConnection = testServerConnection;
-window.debugServerConfig = () => {
-  console.log("Current SERVER_CONFIG:", SERVER_CONFIG);
-  console.log("Base URL:", SERVER_CONFIG.baseUrl);
-  console.log("Health URL:", SERVER_CONFIG.healthUrl);
-};
-
-async function testDirectRequest() {
-  try {
-    console.log("Testing direct request without queue...");
-    const response = await makeServerRequest(`${SERVER_CONFIG.baseUrl}/users`);
-    const data = await response.json();
-    console.log("✅ Direct request successful:", data);
-    return data;
-  } catch (error) {
-    console.error("❌ Direct request failed:", error);
-    throw error;
-  }
-}
-
-window.testDirectRequest = testDirectRequest;
