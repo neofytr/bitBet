@@ -11,7 +11,7 @@ const SERVER_CONFIG = {
   get baseUrl() {
     return `${this.protocol}://${this.host}:${this.port}/api`;
   },
-}
+};
 
 // Data storage
 let users = {};
@@ -60,30 +60,75 @@ document.addEventListener("DOMContentLoaded", async function () {
   setupEventListeners();
 });
 
+async function makeServerRequest(url, options = {}) {
+  try {
+    console.log(`Making request to: ${url}`);
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response;
+  } catch (error) {
+    console.error(`Server request failed for ${url}:`, error);
+
+    // Show user-friendly error message
+    if (
+      error.message.includes("Failed to fetch") ||
+      error.message.includes("NetworkError")
+    ) {
+      showNotification(
+        `⚠️ Cannot connect to server. Check if server is running at ${SERVER_CONFIG.baseUrl}`
+      );
+    } else {
+      showNotification(`⚠️ Server error: ${error.message}`);
+    }
+
+    throw error;
+  }
+}
+
 async function loadDataFromServer() {
   try {
+    console.log(`Attempting to connect to server at: ${SERVER_CONFIG.baseUrl}`);
+
+    // Test server connectivity first
+    await makeServerRequest(
+      `${SERVER_CONFIG.baseUrl.replace("/api", "")}/health`
+    );
+    console.log("Server health check passed");
+
     // Load users
-    const usersResponse = await fetch(`${SERVER_CONFIG.baseUrl}/users`);
-    if (usersResponse.ok) {
-      users = await usersResponse.json();
-    }
+    const usersResponse = await makeServerRequest(
+      `${SERVER_CONFIG.baseUrl}/users`
+    );
+    users = await usersResponse.json();
 
     // Load guesses
-    const guessesResponse = await fetch(`${SERVER_CONFIG.baseUrl}/guesses`);
-    if (guessesResponse.ok) {
-      guesses = await guessesResponse.json();
-    }
+    const guessesResponse = await makeServerRequest(
+      `${SERVER_CONFIG.baseUrl}/guesses`
+    );
+    guesses = await guessesResponse.json();
 
     // Load results
-    const resultsResponse = await fetch(`${SERVER_CONFIG.baseUrl}/results`);
-    if (resultsResponse.ok) {
-      actualResults = await resultsResponse.json();
-    }
+    const resultsResponse = await makeServerRequest(
+      `${SERVER_CONFIG.baseUrl}/results`
+    );
+    actualResults = await resultsResponse.json();
 
     console.log("Data loaded from server successfully");
+    showNotification("✅ Connected to server successfully!");
   } catch (error) {
     console.error("Error loading data from server:", error);
     showNotification("⚠️ Server connection failed. Using offline mode.");
+
     // Fall back to localStorage if server is unavailable
     users = JSON.parse(localStorage.getItem("users") || "{}");
     guesses = JSON.parse(localStorage.getItem("guesses") || "{}");
