@@ -3,81 +3,15 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
-// Updated server configuration with environment detection
+// EC2 Server Configuration
 const SERVER_CONFIG = {
-  // Try to detect if we're in development or production
-  get host() {
-    // Check if we're on localhost (development)
-    if (
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1"
-    ) {
-      return "localhost";
-    }
-    // For production, you'll need to replace this with your actual server IP/domain
-    // Option 1: Use your public IP (get it from whatismyipaddress.com)
-    // Option 2: Use a cloud service (Railway, Heroku, etc.)
-    // Option 3: Use ngrok for tunneling
-    return "122.161.48.123"; // Replace this!
-  },
+  host: "13.48.194.145", // Replace with your actual EC2 public IP
   port: "5000",
-  get protocol() {
-    // Use HTTPS in production if your server supports it
-    return window.location.protocol === "https:" ? "https" : "http";
-  },
+  protocol: "http",
   get baseUrl() {
     return `${this.protocol}://${this.host}:${this.port}/api`;
   },
-};
-
-// Alternative configuration for different deployment scenarios
-const DEPLOYMENT_CONFIGS = {
-  // Local development
-  local: {
-    host: "localhost",
-    port: "5000",
-    protocol: "http",
-    get baseUrl() {
-      return `${this.protocol}://${this.host}:${this.port}/api`;
-    },
-  },
-
-  // Using ngrok (recommended for testing)
-  ngrok: {
-    host: "https://9cd6-2401-4900-1c5b-1e93-aa29-c239-931e-f464.ngrok-free.app", // Replace with your ngrok URL
-    port: "5000",
-    protocol: "https",
-    get baseUrl() {
-      return `${this.protocol}://${this.host}/api`;
-    },
-  },
-
-  // Cloud deployment (Railway, Heroku, etc.)
-  cloud: {
-    host: "your-app.railway.app", // Replace with your cloud service URL
-    port: "",
-    protocol: "https",
-    get baseUrl() {
-      return `${this.protocol}://${this.host}/api`;
-    },
-  },
-
-  // Public IP with port forwarding
-  publicIp: {
-    host: "122.161.48.123", // Replace with your public IP
-    port: "5000",
-    protocol: "http", // or "https" if you have SSL
-    get baseUrl() {
-      return `${this.protocol}://${this.host}:${this.port}/api`;
-    },
-  },
-};
-
-// Select which configuration to use
-const ACTIVE_CONFIG = DEPLOYMENT_CONFIGS.ngrok; // Change this based on your setup
-
-// Override SERVER_CONFIG with active configuration
-Object.assign(SERVER_CONFIG, ACTIVE_CONFIG);
+}
 
 // Data storage
 let users = {};
