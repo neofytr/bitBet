@@ -4,7 +4,7 @@ const ADMIN_CONFIG = {
 };
 
 const SERVER_CONFIG = {
-  host: "192.168.122.1",
+  host: "122.161.48.123",
   port: "5000",
   get baseUrl() {
     return `http://${this.host}:${this.port}/api`;

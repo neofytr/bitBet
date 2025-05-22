@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, origins=["https://bit-bet-1mcw.vercel.app/", "http://localhost:5000"])  # Add your Vercel domain
 
 # Configuration
 DATA_DIR = 'bitbets_data'
@@ -280,7 +280,7 @@ if __name__ == '__main__':
     ensure_directories()
     print("BitBets Server Starting...")
     print(f"Data directory: {DATA_DIR}")
-    print("Server will run on http://localhost:5000")
+    print("Server will run on http://0.0.0.0:5000")  # Changed to listen on all interfaces
     print("API endpoints:")
     print("  GET/POST /api/users")
     print("  GET/POST /api/guesses") 
@@ -293,4 +293,4 @@ if __name__ == '__main__':
     # Create initial backup on startup
     create_backup()
     
-    app.run(host="localhost", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=False)  # Changed to listen on all interfaces
