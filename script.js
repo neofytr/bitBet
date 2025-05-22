@@ -4,7 +4,7 @@ const ADMIN_CONFIG = {
 };
 
 const SERVER_CONFIG = {
-  host: "https://dca6-13-48-194-145.ngrok-free.app",
+  host: "https://f769-13-48-194-145.ngrok-free.app",
   port: "", // no port needed
   protocol: "https",
   get baseUrl() {
