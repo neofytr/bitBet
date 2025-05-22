@@ -3,7 +3,7 @@ const ADMIN_CONFIG = {
   password: "admin123",
 };
 
-const DEBUG = true; // Set to false for production
+const DEBUG = true;
 
 function debugLog(message, data = null) {
   if (DEBUG) {
@@ -21,11 +21,10 @@ const SERVER_CONFIG = {
   get healthUrl() {
     return `${this.protocol}://${this.host}/health`;
   },
-  timeout: 15000, // Increased timeout
+  timeout: 15000,
   retries: 3,
 };
 
-// Global state
 let users = {};
 let guesses = {};
 let actualResults = {};
@@ -35,7 +34,6 @@ let isLoading = false;
 let requestQueue = [];
 let processingQueue = false;
 
-// Request queue system to prevent concurrent requests
 async function queueRequest(requestFunction) {
   return new Promise((resolve, reject) => {
     requestQueue.push({ requestFunction, resolve, reject });
@@ -56,7 +54,6 @@ async function processQueue() {
     } catch (error) {
       reject(error);
     }
-    // Small delay between requests to prevent overwhelming the server
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
@@ -93,7 +90,6 @@ const courseCategories = {
   "bits-f112": "engineering",
 };
 
-// Loading state management
 function setLoading(loading) {
   isLoading = loading;
   const loadingElements = document.querySelectorAll(".loading-overlay");
@@ -105,7 +101,6 @@ function setLoading(loading) {
     }
   });
 
-  // Disable/enable buttons during loading
   const buttons = document.querySelectorAll("button");
   buttons.forEach((btn) => {
     btn.disabled = loading;
@@ -129,7 +124,6 @@ async function makeServerRequest(url, options = {}) {
       "Content-Type": "application/json",
       "ngrok-skip-browser-warning": "true",
       Accept: "application/json",
-      // Add these headers to help with CORS and ngrok
       "User-Agent": "Mozilla/5.0 (compatible; bitBETS/1.0)",
       ...options.headers,
     },
@@ -170,12 +164,10 @@ async function makeServerRequest(url, options = {}) {
       debugLog(`Error type:`, error.name);
       debugLog(`Full error:`, error);
 
-      // Don't retry on abort (timeout) or if it's the last attempt
       if (error.name === "AbortError" || attempt === SERVER_CONFIG.retries) {
         break;
       }
 
-      // Exponential backoff for retries
       const delay = Math.pow(2, attempt) * 1000;
       debugLog(`Waiting ${delay}ms before retry...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -184,7 +176,6 @@ async function makeServerRequest(url, options = {}) {
 
   clearTimeout(timeoutId);
 
-  // Enhanced error handling with more specific messages
   if (lastError.name === "AbortError") {
     const timeoutError = `Request timed out after ${SERVER_CONFIG.timeout}ms. Server might be slow or unreachable.`;
     debugLog(timeoutError);
@@ -207,7 +198,6 @@ async function makeServerRequest(url, options = {}) {
   }
 }
 
-// Debounced auto-save function
 const debouncedAutoSave = debounce(async (courseId) => {
   if (currentUser && !isAdmin && !isLoading) {
     try {
@@ -266,10 +256,8 @@ async function loadDataFromServer() {
   try {
     debugLog(`Starting server connection to: ${SERVER_CONFIG.baseUrl}`);
 
-    // Test basic connectivity first
     debugLog(`Testing connectivity to: ${window.location.origin}`);
 
-    // Check if we can reach the internet
     try {
       await fetch("https://www.google.com/favicon.ico", {
         method: "HEAD",
@@ -282,7 +270,6 @@ async function loadDataFromServer() {
       throw new Error("No internet connection detected");
     }
 
-    // Check server health with more detailed logging
     debugLog(`Checking server health at: ${SERVER_CONFIG.healthUrl}`);
 
     try {
@@ -296,7 +283,6 @@ async function loadDataFromServer() {
       debugLog("Server health check failed:", healthError);
       console.error("❌ Server health check failed:", healthError.message);
 
-      // Try alternative health check
       try {
         debugLog("Trying alternative health check...");
         const altResponse = await queueRequest(() =>
@@ -311,7 +297,6 @@ async function loadDataFromServer() {
       }
     }
 
-    // Load data with individual error handling
     debugLog("Loading users data...");
     const usersResponse = await queueRequest(() =>
       makeServerRequest(`${SERVER_CONFIG.baseUrl}/users`)
@@ -336,7 +321,6 @@ async function loadDataFromServer() {
     console.log("✅ All data loaded from server successfully");
     showNotification("✅ Connected to server successfully!");
 
-    // Cache data locally as backup
     localStorage.setItem("users_backup", JSON.stringify(users));
     localStorage.setItem("guesses_backup", JSON.stringify(guesses));
     localStorage.setItem("actualResults_backup", JSON.stringify(actualResults));
@@ -348,7 +332,6 @@ async function loadDataFromServer() {
       `⚠️ Server connection failed: ${error.message}. Using offline mode.`
     );
 
-    // Load from backup
     users = JSON.parse(
       localStorage.getItem("users_backup") ||
         localStorage.getItem("users") ||
@@ -377,7 +360,6 @@ async function loadDataFromServer() {
 async function testServerConnection() {
   console.log("🔍 Starting manual server connection test...");
 
-  // Test 1: Basic fetch to server
   try {
     console.log("Test 1: Basic server connection...");
     const response = await fetch(SERVER_CONFIG.host, {
@@ -391,7 +373,6 @@ async function testServerConnection() {
     console.log("❌ Basic connection failed:", error.message);
   }
 
-  // Test 2: Health endpoint
   try {
     console.log("Test 2: Health endpoint...");
     const response = await fetch(SERVER_CONFIG.healthUrl, {
@@ -407,7 +388,6 @@ async function testServerConnection() {
     console.log("❌ Health endpoint failed:", error.message);
   }
 
-  // Test 3: API endpoint
   try {
     console.log("Test 3: API endpoint...");
     const response = await fetch(`${SERVER_CONFIG.baseUrl}/users`, {
@@ -439,7 +419,7 @@ async function saveUsersToServer() {
   } catch (error) {
     console.error("Error saving users to server:", error);
     localStorage.setItem("users", JSON.stringify(users));
-    throw error; // Re-throw to handle in calling function
+    throw error; 
   }
 }
 
@@ -501,7 +481,6 @@ function setupEventListeners() {
       }
     });
 
-    // Also handle blur event for immediate save when user leaves field
     input.addEventListener("blur", function () {
       const courseId = this.id.replace("-midsem", "").replace("-compre", "");
       if (currentUser && !isAdmin) {
@@ -698,7 +677,6 @@ async function autoSaveGuess(course) {
     updateCurrentGuessDisplay(course);
   } catch (error) {
     console.error("Auto-save failed:", error);
-    // Don't show error notification for auto-save failures
   }
 }
 
@@ -1389,15 +1367,12 @@ function showNotification(message) {
   }
 }
 
-// Handle page visibility changes to refresh data when user returns
 document.addEventListener("visibilitychange", function () {
   if (!document.hidden && currentUser && !isLoading) {
-    // Refresh data when user returns to the page
     setTimeout(refreshData, 1000);
   }
 });
 
-// Handle network status changes
 window.addEventListener("online", function () {
   showNotification("🌐 Back online! Refreshing data...");
   setTimeout(refreshData, 1000);
@@ -1407,7 +1382,6 @@ window.addEventListener("offline", function () {
   showNotification("📡 You are offline. Changes will be saved locally.");
 });
 
-// Initialize when page loads
 window.addEventListener("load", async function () {
   try {
     setLoading(true);
@@ -1421,11 +1395,10 @@ window.addEventListener("load", async function () {
   }
 });
 
-// Prevent form submission on Enter key in number inputs
 document.addEventListener("keydown", function (e) {
   if (e.key === "Enter" && e.target.type === "number") {
     e.preventDefault();
-    e.target.blur(); // Trigger blur event to save
+    e.target.blur(); 
   }
 });
 
