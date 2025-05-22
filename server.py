@@ -4,9 +4,16 @@ import json
 import csv
 import os
 from datetime import datetime
+import logging
 
 app = Flask(__name__)
-CORS(app, origins=["https://bit-bet-1mcw.vercel.app/", "http://localhost:5000"])  # Add your Vercel domain
+
+# Configure CORS to allow all origins for now (you can restrict this later)
+CORS(app, origins=["*"])
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configuration
 DATA_DIR = 'bitbets_data'
@@ -33,8 +40,12 @@ COURSE_NAMES = {
 
 def ensure_directories():
     """Create necessary directories if they don't exist"""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        logger.info(f"Directories created/verified: {DATA_DIR}, {BACKUP_DIR}")
+    except Exception as e:
+        logger.error(f"Error creating directories: {e}")
 
 def load_json_file(filepath, default=None):
     """Load JSON file, return default if file doesn't exist"""
@@ -43,10 +54,13 @@ def load_json_file(filepath, default=None):
     try:
         if os.path.exists(filepath):
             with open(filepath, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                logger.info(f"Loaded {filepath} successfully")
+                return data
+        logger.info(f"File {filepath} doesn't exist, returning default")
         return default
     except Exception as e:
-        print(f"Error loading {filepath}: {e}")
+        logger.error(f"Error loading {filepath}: {e}")
         return default
 
 def save_json_file(filepath, data):
@@ -54,9 +68,10 @@ def save_json_file(filepath, data):
     try:
         with open(filepath, 'w') as f:
             json.dump(data, f, indent=2)
+        logger.info(f"Saved {filepath} successfully")
         return True
     except Exception as e:
-        print(f"Error saving {filepath}: {e}")
+        logger.error(f"Error saving {filepath}: {e}")
         return False
 
 def create_backup():
@@ -73,9 +88,9 @@ def create_backup():
         }
         
         save_json_file(backup_file, all_data)
-        print(f"Backup created: {backup_file}")
+        logger.info(f"Backup created: {backup_file}")
     except Exception as e:
-        print(f"Error creating backup: {e}")
+        logger.error(f"Error creating backup: {e}")
 
 def export_to_csv():
     """Export all data to CSV files using built-in csv module"""
@@ -102,7 +117,7 @@ def export_to_csv():
                         'Timestamp': guess_data.get('timestamp', '')
                     })
         
-        print(f"Guesses exported to: {guesses_csv_file}")
+        logger.info(f"Guesses exported to: {guesses_csv_file}")
         
         # Export results to CSV
         results_csv_file = os.path.join(DATA_DIR, 'results_export.csv')
@@ -120,7 +135,7 @@ def export_to_csv():
                         'Average': average
                     })
         
-        print(f"Results exported to: {results_csv_file}")
+        logger.info(f"Results exported to: {results_csv_file}")
         
         # Export detailed analysis CSV
         analysis_csv_file = os.path.join(DATA_DIR, 'detailed_analysis.csv')
@@ -149,72 +164,139 @@ def export_to_csv():
                                 'Is Winner': 'Yes' if is_winner else 'No'
                             })
         
-        print(f"Detailed analysis exported to: {analysis_csv_file}")
+        logger.info(f"Detailed analysis exported to: {analysis_csv_file}")
             
     except Exception as e:
-        print(f"Error exporting to CSV: {e}")
+        logger.error(f"Error exporting to CSV: {e}")
+
+@app.route('/', methods=['GET'])
+def root():
+    return jsonify({
+        'message': 'BitBets API Server is running!',
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'endpoints': [
+            'GET/POST /api/users',
+            'GET/POST /api/guesses',
+            'GET/POST /api/results',
+            'GET /health',
+            'GET /api/stats',
+            'POST /api/backup',
+            'POST /api/export-csv',
+            'POST /api/clear-all',
+            'POST /api/restart-competition'
+        ]
+    })
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'healthy', 
+        'timestamp': datetime.now().isoformat(),
+        'data_directory': DATA_DIR,
+        'files_exist': {
+            'users': os.path.exists(USERS_FILE),
+            'guesses': os.path.exists(GUESSES_FILE),
+            'results': os.path.exists(RESULTS_FILE)
+        }
+    })
 
 @app.route('/api/users', methods=['GET', 'POST'])
 def handle_users():
-    if request.method == 'GET':
-        users = load_json_file(USERS_FILE)
-        return jsonify(users)
-    
-    elif request.method == 'POST':
-        data = request.get_json()
-        users = load_json_file(USERS_FILE)
-        users.update(data)
+    try:
+        if request.method == 'GET':
+            users = load_json_file(USERS_FILE)
+            logger.info(f"GET /api/users - returning {len(users)} users")
+            return jsonify(users)
         
-        if save_json_file(USERS_FILE, users):
-            return jsonify({'status': 'success', 'message': 'Users updated'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to save users'}), 500
+        elif request.method == 'POST':
+            data = request.get_json()
+            if not data:
+                return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+                
+            users = load_json_file(USERS_FILE)
+            users.update(data)
+            
+            if save_json_file(USERS_FILE, users):
+                logger.info(f"POST /api/users - updated users successfully")
+                return jsonify({'status': 'success', 'message': 'Users updated'})
+            else:
+                return jsonify({'status': 'error', 'message': 'Failed to save users'}), 500
+    except Exception as e:
+        logger.error(f"Error in handle_users: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/guesses', methods=['GET', 'POST'])
 def handle_guesses():
-    if request.method == 'GET':
-        guesses = load_json_file(GUESSES_FILE)
-        return jsonify(guesses)
-    
-    elif request.method == 'POST':
-        data = request.get_json()
-        guesses = load_json_file(GUESSES_FILE)
-        guesses.update(data)
+    try:
+        if request.method == 'GET':
+            guesses = load_json_file(GUESSES_FILE)
+            logger.info(f"GET /api/guesses - returning guesses for {len(guesses)} users")
+            return jsonify(guesses)
         
-        if save_json_file(GUESSES_FILE, guesses):
-            # Auto-export CSV when guesses are updated
-            export_to_csv()
-            return jsonify({'status': 'success', 'message': 'Guesses updated'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to save guesses'}), 500
+        elif request.method == 'POST':
+            data = request.get_json()
+            if not data:
+                return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+                
+            guesses = load_json_file(GUESSES_FILE)
+            guesses.update(data)
+            
+            if save_json_file(GUESSES_FILE, guesses):
+                # Auto-export CSV when guesses are updated
+                export_to_csv()
+                logger.info(f"POST /api/guesses - updated guesses successfully")
+                return jsonify({'status': 'success', 'message': 'Guesses updated'})
+            else:
+                return jsonify({'status': 'error', 'message': 'Failed to save guesses'}), 500
+    except Exception as e:
+        logger.error(f"Error in handle_guesses: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/results', methods=['GET', 'POST'])
 def handle_results():
-    if request.method == 'GET':
-        results = load_json_file(RESULTS_FILE)
-        return jsonify(results)
-    
-    elif request.method == 'POST':
-        data = request.get_json()
-        results = load_json_file(RESULTS_FILE)
-        results.update(data)
+    try:
+        if request.method == 'GET':
+            results = load_json_file(RESULTS_FILE)
+            logger.info(f"GET /api/results - returning results for {len(results)} courses")
+            return jsonify(results)
         
-        if save_json_file(RESULTS_FILE, results):
-            # Auto-export CSV when results are updated
-            export_to_csv()
-            return jsonify({'status': 'success', 'message': 'Results updated'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to save results'}), 500
+        elif request.method == 'POST':
+            data = request.get_json()
+            if not data:
+                return jsonify({'status': 'error', 'message': 'No data provided'}), 400
+                
+            results = load_json_file(RESULTS_FILE)
+            results.update(data)
+            
+            if save_json_file(RESULTS_FILE, results):
+                # Auto-export CSV when results are updated
+                export_to_csv()
+                logger.info(f"POST /api/results - updated results successfully")
+                return jsonify({'status': 'success', 'message': 'Results updated'})
+            else:
+                return jsonify({'status': 'error', 'message': 'Failed to save results'}), 500
+    except Exception as e:
+        logger.error(f"Error in handle_results: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/backup', methods=['POST'])
 def create_manual_backup():
-    create_backup()
-    return jsonify({'status': 'success', 'message': 'Backup created'})
+    try:
+        create_backup()
+        return jsonify({'status': 'success', 'message': 'Backup created'})
+    except Exception as e:
+        logger.error(f"Error creating backup: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/export-csv', methods=['POST'])
 def manual_csv_export():
-    export_to_csv()
-    return jsonify({'status': 'success', 'message': 'Data exported to CSV'})
+    try:
+        export_to_csv()
+        return jsonify({'status': 'success', 'message': 'Data exported to CSV'})
+    except Exception as e:
+        logger.error(f"Error exporting CSV: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/api/clear-all', methods=['POST'])
 def clear_all_data():
@@ -227,8 +309,10 @@ def clear_all_data():
         save_json_file(GUESSES_FILE, {})
         save_json_file(RESULTS_FILE, {})
         
+        logger.info("All data cleared successfully")
         return jsonify({'status': 'success', 'message': 'All data cleared'})
     except Exception as e:
+        logger.error(f"Error clearing data: {e}")
         return jsonify({'status': 'error', 'message': f'Failed to clear data: {str(e)}'}), 500
 
 @app.route('/api/restart-competition', methods=['POST'])
@@ -241,8 +325,10 @@ def restart_competition():
         save_json_file(GUESSES_FILE, {})
         save_json_file(RESULTS_FILE, {})
         
+        logger.info("Competition restarted successfully")
         return jsonify({'status': 'success', 'message': 'Competition restarted'})
     except Exception as e:
+        logger.error(f"Error restarting competition: {e}")
         return jsonify({'status': 'error', 'message': f'Failed to restart competition: {str(e)}'}), 500
 
 @app.route('/api/stats', methods=['GET'])
@@ -270,27 +356,33 @@ def get_stats():
             'results_set': results_set
         })
     except Exception as e:
+        logger.error(f"Error getting stats: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'status': 'error', 'message': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     ensure_directories()
-    print("BitBets Server Starting...")
-    print(f"Data directory: {DATA_DIR}")
-    print("Server will run on http://0.0.0.0:5000")  # Changed to listen on all interfaces
-    print("API endpoints:")
-    print("  GET/POST /api/users")
-    print("  GET/POST /api/guesses") 
-    print("  GET/POST /api/results")
-    print("  POST /api/backup")
-    print("  POST /api/export-csv")
-    print("  GET /api/stats")
-    print("  GET /health")
+    logger.info("BitBets Server Starting...")
+    logger.info(f"Data directory: {DATA_DIR}")
+    logger.info("Server will run on http://0.0.0.0:5000")
+    logger.info("API endpoints:")
+    logger.info("  GET/POST /api/users")
+    logger.info("  GET/POST /api/guesses") 
+    logger.info("  GET/POST /api/results")
+    logger.info("  POST /api/backup")
+    logger.info("  POST /api/export-csv")
+    logger.info("  GET /api/stats")
+    logger.info("  GET /health")
     
     # Create initial backup on startup
     create_backup()
     
-    app.run(host="0.0.0.0", port=5000, debug=False)  # Changed to listen on all interfaces
+    # Run the server
+    app.run(host="0.0.0.0", port=5000, debug=False)
