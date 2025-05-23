@@ -255,21 +255,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 async function loadDataFromServer() {
   try {
     debugLog(`Starting server connection to: ${SERVER_CONFIG.baseUrl}`);
-
     debugLog(`Testing connectivity to: ${window.location.origin}`);
-
-    try {
-      await fetch("https://www.google.com/favicon.ico", {
-        method: "HEAD",
-        mode: "no-cors",
-        cache: "no-cache",
-      });
-      debugLog("Internet connectivity: OK");
-    } catch (e) {
-      debugLog("Internet connectivity: FAILED", e);
-      throw new Error("No internet connection detected");
-    }
-
     debugLog(`Checking server health at: ${SERVER_CONFIG.healthUrl}`);
 
     try {
