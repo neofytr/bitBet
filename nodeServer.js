@@ -12,14 +12,9 @@ const PORT = process.env.PORT || 5000;
 
 app.use(
   cors({
-    origin: "*",
+    origin: "https://bit-bet-1mcw.vercel.app/",
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "ngrok-skip-browser-warning",
-      "Authorization",
-    ],
-    credentials: true,
+    credentials: false,
   })
 );
 
